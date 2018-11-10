@@ -19,29 +19,32 @@
 #define UNIFORMBUFFER_HPP
 
 #include <memory>
+#include <vector>
 
 #include <vulkan/vulkan.h>
 
 class Device;
 class UniformBufferObject;
+class Swapchain;
 
 /**
  * @brief A wrapper for a Vulkan uniform buffer.
  */
 class UniformBuffer {
   public:
-    UniformBuffer(Device const &);
+    UniformBuffer(Device const &, Swapchain const &);
     UniformBuffer(UniformBuffer const &) = delete;
     UniformBuffer &operator=(UniformBuffer const &) = delete;
     virtual ~UniformBuffer();
-    std::shared_ptr<VkBuffer> GetVulkanUniformBuffer() const;
-    void UpdateUniformBufferObject(Device const &, UniformBufferObject const &);
+    std::shared_ptr<VkBuffer> GetVulkanUniformBuffer(uint32_t const) const;
+    void Update(Device const &, Swapchain const &, float const, 
+        uint32_t const);
   
   private:
-    int8_t CreateVulkanUniformBuffer(Device const &);
+    int8_t CreateVulkanUniformBuffers(Device const &, uint32_t const);
 
-    std::shared_ptr<VkBuffer> m_vulkan_uniform_buffer;
-    std::shared_ptr<VkDeviceMemory> m_vulkan_uniform_buffer_memory;
+    std::vector<std::shared_ptr<VkBuffer>> m_vulkan_uniform_buffers;
+    std::vector<std::shared_ptr<VkDeviceMemory>> m_vulkan_uniform_buffers_memory;
 };
 
 #endif

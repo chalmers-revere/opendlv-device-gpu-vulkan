@@ -19,11 +19,6 @@
 #include <iostream>
 #include <vector>
 
-#define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-
 #include "commandbuffers.hpp"
 #include "commandpool.hpp"
 #include "device.hpp"
@@ -68,7 +63,8 @@ Vulkan::Vulkan(std::shared_ptr<GLFWwindow> a_window,
   m_descriptor_sets(),
   m_command_buffers(),
   m_image_available_semaphore(),
-  m_render_finished_semaphore()
+  m_render_finished_semaphore(),
+  m_current_frame(0)
 {
   m_instance.reset(new Instance(a_application_name, 
         a_enable_validation_layers));
@@ -92,8 +88,8 @@ Vulkan::Vulkan(std::shared_ptr<GLFWwindow> a_window,
   m_texture_sampler.reset(new TextureSampler(*m_device));
   m_mesh.reset(new Mesh("share/opendlv-device-gpu-vulkan/chalet.obj"));
   m_mesh_buffers.reset(new MeshBuffers(*m_device, *m_command_pool, *m_mesh));
-  m_uniform_buffer.reset(new UniformBuffer(*m_device));
-  m_descriptor_sets.reset(new DescriptorSets(*m_device, 
+  m_uniform_buffer.reset(new UniformBuffer(*m_device, *m_swapchain));
+  m_descriptor_sets.reset(new DescriptorSets(*m_device, *m_swapchain, 
         *m_descriptor_set_layout, *m_uniform_buffer, *m_texture_resources, 
         *m_texture_sampler));
   m_command_buffers.reset(new CommandBuffers(*m_device, *m_swapchain, 
@@ -107,28 +103,8 @@ Vulkan::~Vulkan()
 {
 }
 
-void Vulkan::UpdateUniformBufferObject(double const a_time)
-{
-
-  VkExtent2D vulkan_swapchain_extent = m_swapchain->GetVulkanSwapchainExtent();
-  float const width = static_cast<float>(vulkan_swapchain_extent.width);
-  float const height = static_cast<float>(vulkan_swapchain_extent.height);
-  float const aspect_ratio = width / height;
-
-  UniformBufferObject ubo = {};
-  ubo.model = glm::rotate(glm::mat4(), 
-      static_cast<float>(a_time) * glm::radians(45.0f),
-      glm::vec3(0.0f, 0.0f, 1.0f));
-  ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), 
-      glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-  ubo.projection = glm::perspective(glm::radians(45.0f), aspect_ratio, 0.1f, 
-      10.0f);
-  ubo.projection[1][1] *= -1;
-
-  m_uniform_buffer->UpdateUniformBufferObject(*m_device, ubo);
-}
-
-int8_t Vulkan::DrawFrame(uint32_t const a_width, uint32_t const a_height)
+int8_t Vulkan::DrawFrame(float const a_time, uint32_t const a_width, 
+    uint32_t const a_height, bool const a_recreate_swapchain)
 {
   auto vulkan_device = m_device->GetVulkanDevice();
   auto vulkan_graphics_queue = m_device->GetVulkanGraphicsQueue();
@@ -140,14 +116,18 @@ int8_t Vulkan::DrawFrame(uint32_t const a_width, uint32_t const a_height)
   auto vulkan_render_finished_semaphore = 
     m_render_finished_semaphore->GetVulkanSemaphore();
 
+  vkWaitForFences(*vulkan_device, 1, &in_flight_fences[m_current_frame], 
+      VK_TRUE, std::numeric_limits<uint64_t>::max());
+
   uint32_t image_index;
   VkResult vulkan_result = vkAcquireNextImageKHR(*vulkan_device, 
       *vulkan_swapchain, std::numeric_limits<uint64_t>::max(),
-      *vulkan_image_available_semaphore, VK_NULL_HANDLE, &image_index);
+      *vulkan_image_available_semaphore[m_current_frame], VK_NULL_HANDLE,
+      &image_index);
 
   if (vulkan_result == VK_ERROR_OUT_OF_DATE_KHR) {
-      RecreateSwapchain(a_width, a_height);
-      return 0;
+    RecreateSwapchain(a_width, a_height);
+    return 0;
   } else if (vulkan_result != VK_SUCCESS 
       && vulkan_result != VK_SUBOPTIMAL_KHR) {
     std::cerr << "Failed to get swapchain image." 
@@ -155,10 +135,13 @@ int8_t Vulkan::DrawFrame(uint32_t const a_width, uint32_t const a_height)
     return -1;
   }
 
+  m_uniform_buffer->Update(m_device, m_swapchain, image_index, a_time);
+
   VkSubmitInfo submit_info = {};
   submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-  VkSemaphore wait_semaphores[] = {*vulkan_image_available_semaphore};
+  VkSemaphore wait_semaphores[] = 
+    {*vulkan_image_available_semaphore[m_current_frame]};
   VkPipelineStageFlags wait_stages[] =
     {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
   submit_info.waitSemaphoreCount = 1;
@@ -168,13 +151,16 @@ int8_t Vulkan::DrawFrame(uint32_t const a_width, uint32_t const a_height)
   submit_info.commandBufferCount = 1;
   submit_info.pCommandBuffers = &(*vulkan_command_buffers)[image_index];
 
-  VkSemaphore signal_semaphores[] = {*vulkan_render_finished_semaphore};
+  VkSemaphore signal_semaphores[] = 
+    {*vulkan_render_finished_semaphore[m_current_frame]};
   submit_info.signalSemaphoreCount = 1;
   submit_info.pSignalSemaphores = signal_semaphores;
 
-  uint32_t res = vkQueueSubmit(*vulkan_graphics_queue, 1, &submit_info,
-      VK_NULL_HANDLE);
-  if (res != VK_SUCCESS) {
+  vkResetFences(*vulkan_device, 1, &in_flight_fences[m_current_frame]);
+
+  vulkan_result = vkQueueSubmit(*vulkan_graphics_queue, 1, &submit_info,
+      in_flight_fences[m_current_frame]);
+  if (vulkan_result != VK_SUCCESS) {
     std::cerr << "Failed to submit draw command buffer." << std::endl;
     return -1;
   }
@@ -194,7 +180,7 @@ int8_t Vulkan::DrawFrame(uint32_t const a_width, uint32_t const a_height)
   vulkan_result = vkQueuePresentKHR(*vulkan_present_queue, &present_info);
 
   if (vulkan_result == VK_ERROR_OUT_OF_DATE_KHR 
-      || vulkan_result == VK_SUBOPTIMAL_KHR) {
+      || vulkan_result == VK_SUBOPTIMAL_KHR || a_recreate_swapchain) {
     RecreateSwapchain(a_width, a_height);
     return 0;
   } else if (vulkan_result != VK_SUCCESS) {
@@ -202,7 +188,7 @@ int8_t Vulkan::DrawFrame(uint32_t const a_width, uint32_t const a_height)
     return -1;
   }
 
-  vkQueueWaitIdle(*vulkan_present_queue);
+  m_current_frame = (m_current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
 
   return 0;
 }

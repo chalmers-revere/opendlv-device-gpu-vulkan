@@ -37,9 +37,9 @@ class Window {
   Window(Window const &) = delete;
   Window &operator=(Window const &) = delete;
   virtual ~Window();
-  std::shared_ptr<Vulkan> GetVulkan() const;
   void ParseGlfwButtonInput(int32_t, int32_t);
   void ParseGlfwMouseCursorInput(double, double);
+  void SetFramebufferResized(bool);
   void Start();
 
   Window static &GetInstance();
@@ -47,10 +47,10 @@ class Window {
  private:
   Window();
 
+  void static OnFramebufferResize(GLFWwindow *, int32_t, int32_t);
   void static OnKeyPress(GLFWwindow *, int32_t, int32_t, int32_t, int32_t);
   void static OnMouseButtonPress(GLFWwindow *, int32_t, int32_t, int32_t);
   void static OnMouseCursorMove(GLFWwindow *, double, double);
-  void static OnWindowResize(GLFWwindow *, int32_t, int32_t);
 
   std::chrono::time_point<std::chrono::high_resolution_clock> m_start_time;
   std::shared_ptr<GLFWwindow> m_window;
@@ -58,6 +58,7 @@ class Window {
   std::string m_title;
   uint32_t m_height;
   uint32_t m_width;
+  bool m_framebuffer_resized;
   bool m_initialized;
   bool m_running;
 };

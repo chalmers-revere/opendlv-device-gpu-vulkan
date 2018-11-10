@@ -199,6 +199,11 @@ int8_t Swapchain::CreateVulkanSwapchain(
   return 0;
 }
 
+uint32_t Swapchain::GetSwapchainImageCount() const
+{
+  return m_vulkan_swapchain_images->size();
+}
+
 std::shared_ptr<VkSwapchainKHR> Swapchain::GetVulkanSwapchain() const
 {
   return m_vulkan_swapchain;

@@ -47,10 +47,11 @@ class CommandBuffers {
       const;
   
   private:
-    int8_t CreateVulkanCommandBuffers(Framebuffers const &, VkDevice const &, 
-        VkRenderPass const &, VkPipeline const &, VkPipelineLayout const &, 
-        VkCommandPool const &, VkBuffer const &, VkBuffer const &, 
-        VkDescriptorSet const &, VkExtent2D, uint32_t);
+    int8_t CreateVulkanCommandBuffers(DescriptorSets const &, 
+        Framebuffers const &, VkDevice const &, VkRenderPass const &, 
+        VkPipeline const &, VkPipelineLayout const &, 
+        VkCommandPool const &, VkBuffer const &, VkBuffer const &, VkExtent2D,
+        uint32_t);
 
     std::shared_ptr<std::vector<VkCommandBuffer>> m_vulkan_command_buffers;
 };

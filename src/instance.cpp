@@ -87,11 +87,11 @@ int8_t Instance::CreateVulkanInstance(std::string const &a_application_name)
   create_info.pApplicationInfo = &app_info;
         
   auto extensions = GetRequiredExtensions();
-  create_info.enabledExtensionCount = extensions.size();
+  create_info.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
   create_info.ppEnabledExtensionNames = extensions.data();
 
   if (enable_validation_layers) {
-    create_info.enabledLayerCount = m_validation_layers.size();
+    create_info.enabledLayerCount = static_cast<uint32_t>(m_validation_layers.size());
     create_info.ppEnabledLayerNames = m_validation_layers.data();
   } else {
     create_info.enabledLayerCount = 0;
@@ -148,11 +148,17 @@ int8_t Instance::SetupVulkanDebugCallback()
   if (!enable_validation_layers) {
     return 0;
   }
+  
+  // VK_DEBUG_REPORT_INFORMATION_BIT_EXT
+  // VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT
+  // VK_DEBUG_REPORT_DEBUG_BIT_EXT
+  // VK_DEBUG_REPORT_ERROR_BIT_EXT
+  // VK_DEBUG_REPORT_WARNING_BIT_EXT
 
   VkDebugReportCallbackCreateInfoEXT create_info = {};
   create_info.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
-  create_info.flags = 
-    VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
+  create_info.flags = VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT 
+    | VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
   create_info.pfnCallback = DebugCallback;
 
   m_vulkan_debug_callback = std::unique_ptr<VkDebugReportCallbackEXT, 

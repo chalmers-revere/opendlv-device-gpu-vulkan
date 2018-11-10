@@ -32,7 +32,7 @@ CommandBuffers::CommandBuffers(Device const &a_device,
     GraphicsPipeline const &a_graphics_pipeline,
     CommandPool const &a_command_pool, Framebuffers const &a_framebuffers,
     MeshBuffers const &a_mesh_buffers, 
-    DescriptorSets const & a_descriptor_sets): 
+    DescriptorSets const &a_descriptor_sets): 
   m_vulkan_command_buffers()
 {
   auto vulkan_device = a_device.GetVulkanDevice();
@@ -43,16 +43,15 @@ CommandBuffers::CommandBuffers(Device const &a_device,
   auto vulkan_command_pool = a_command_pool.GetVulkanCommandPool();
   auto vulkan_vertex_buffer = a_mesh_buffers.GetVulkanVertexBuffer();
   auto vulkan_index_buffer = a_mesh_buffers.GetVulkanIndexBuffer();
-  auto vulkan_descriptor_set = a_descriptor_sets.GetVulkanDescriptorSet();
 
   VkExtent2D vulkan_swapchain_extent = 
     a_swapchain.GetVulkanSwapchainExtent();
   uint32_t const index_count = a_mesh_buffers.GetIndexCount();
 
-  CommandBuffers::CreateVulkanCommandBuffers(a_framebuffers, *vulkan_device,
-      *vulkan_render_pass, *vulkan_pipeline, *vulkan_pipeline_layout,
-      *vulkan_command_pool, *vulkan_vertex_buffer, *vulkan_index_buffer,
-      *vulkan_descriptor_set, vulkan_swapchain_extent, index_count);
+  CommandBuffers::CreateVulkanCommandBuffers(a_descriptor_sets, a_framebuffers, 
+      *vulkan_device, *vulkan_render_pass, *vulkan_pipeline,
+      *vulkan_pipeline_layout, *vulkan_command_pool, *vulkan_vertex_buffer,
+      *vulkan_index_buffer, vulkan_swapchain_extent, index_count);
 }
 
 CommandBuffers::~CommandBuffers()
@@ -60,15 +59,13 @@ CommandBuffers::~CommandBuffers()
 }
 
 int8_t CommandBuffers::CreateVulkanCommandBuffers(
-    Framebuffers const &a_framebuffers, VkDevice const &a_vulkan_device, 
-    VkRenderPass const &a_vulkan_render_pass, 
-    VkPipeline const &a_vulkan_pipeline, 
+    DescriptorSets const &a_descriptor_sets, Framebuffers const &a_framebuffers,
+    VkDevice const &a_vulkan_device, VkRenderPass const &a_vulkan_render_pass,
+    VkPipeline const &a_vulkan_pipeline,
     VkPipelineLayout const &a_vulkan_pipeline_layout,
     VkCommandPool const &a_vulkan_command_pool, 
     VkBuffer const &a_vulkan_vertex_buffer,
-    VkBuffer const &a_vulkan_index_buffer,
-    VkDescriptorSet const &a_vulkan_descriptor_set, 
-    VkExtent2D a_vulkan_swapchain_extent,
+    VkBuffer const &a_vulkan_index_buffer, VkExtent2D a_vulkan_swapchain_extent,
     uint32_t a_index_count)
 {
   uint32_t framebuffer_count = a_framebuffers.GetFramebufferCount();
@@ -98,14 +95,15 @@ int8_t CommandBuffers::CreateVulkanCommandBuffers(
     return -1;
   }
   
-  for (size_t i = 0; i < framebuffer_count; i++) {
-    VkCommandBuffer command_buffer = m_vulkan_command_buffers->at(i);
+  for (uint32_t i = 0; i < framebuffer_count; i++) {
+    auto vulkan_descriptor_set = a_descriptor_sets.GetVulkanDescriptorSet(i);
+    VkCommandBuffer vulkan_command_buffer = m_vulkan_command_buffers->at(i);
   
     VkCommandBufferBeginInfo begin_info = {};
     begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     begin_info.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
 
-    vkBeginCommandBuffer(command_buffer, &begin_info);
+    vkBeginCommandBuffer(vulkan_command_buffer, &begin_info);
     
     VkRenderPassBeginInfo render_pass_info = {};
     render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -122,28 +120,29 @@ int8_t CommandBuffers::CreateVulkanCommandBuffers(
       static_cast<uint32_t>(clear_values.size());
     render_pass_info.pClearValues = clear_values.data();
 
-    vkCmdBeginRenderPass(command_buffer, &render_pass_info,
+    vkCmdBeginRenderPass(vulkan_command_buffer, &render_pass_info,
         VK_SUBPASS_CONTENTS_INLINE);
 
-    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 
+    vkCmdBindPipeline(vulkan_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 
         a_vulkan_pipeline);
     
     VkBuffer vertex_buffers[] = {a_vulkan_vertex_buffer};
     VkDeviceSize offsets[] = {0};
-    vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, offsets);
+    vkCmdBindVertexBuffers(vulkan_command_buffer, 0, 1, vertex_buffers, 
+        offsets);
 
-    vkCmdBindIndexBuffer(command_buffer, a_vulkan_index_buffer, 0,
+    vkCmdBindIndexBuffer(vulkan_command_buffer, a_vulkan_index_buffer, 0,
         VK_INDEX_TYPE_UINT32);
 
-    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 
-        a_vulkan_pipeline_layout, 0, 1, &a_vulkan_descriptor_set, 0, 
-        nullptr);
+    vkCmdBindDescriptorSets(vulkan_command_buffer,
+        VK_PIPELINE_BIND_POINT_GRAPHICS, a_vulkan_pipeline_layout, 0, 1, 
+        &(*vulkan_descriptor_set), 0, nullptr);
     
-    vkCmdDrawIndexed(command_buffer, a_index_count, 1, 0, 0, 0);
+    vkCmdDrawIndexed(vulkan_command_buffer, a_index_count, 1, 0, 0, 0);
 
-    vkCmdEndRenderPass(command_buffer);
+    vkCmdEndRenderPass(vulkan_command_buffer);
 
-    res = vkEndCommandBuffer(command_buffer);
+    res = vkEndCommandBuffer(vulkan_command_buffer);
     
     if (res != VK_SUCCESS) {
       std::cerr << "Failed to record command buffer for framebuffer " 

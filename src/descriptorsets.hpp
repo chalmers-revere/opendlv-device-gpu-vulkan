@@ -19,11 +19,13 @@
 #define DESCRIPTORSETS_HPP
 
 #include <memory>
+#include <vector>
 
 #include <vulkan/vulkan.h>
 
 class DescriptorSetLayout;
 class Device;
+class Swapchain;
 class TextureResources;
 class TextureSampler;
 class UniformBuffer;
@@ -33,22 +35,22 @@ class UniformBuffer;
  */
 class DescriptorSets {
   public:
-    DescriptorSets(Device const &, DescriptorSetLayout const &, 
-        UniformBuffer const &, TextureResources const &, 
-        TextureSampler const &);
+    DescriptorSets(Device const &, Swapchain const &,
+        DescriptorSetLayout const &, UniformBuffer const &,
+        TextureResources const &, TextureSampler const &);
     DescriptorSets(DescriptorSets const &) = delete;
     DescriptorSets &operator=(DescriptorSets const &) = delete;
     virtual ~DescriptorSets();
-    std::shared_ptr<VkDescriptorSet> GetVulkanDescriptorSet() const;
+    std::shared_ptr<VkDescriptorSet> GetVulkanDescriptorSet(uint32_t) const;
   
   private:
     int8_t CreateVulkanDescriptorPool(VkDevice const &);
-    int8_t UpdateVulkanDescriptorSet(VkDevice const &, 
-        VkDescriptorSetLayout const &, VkBuffer const &,
-        VkImageView const &, VkSampler const &);
+    int8_t UpdateVulkanDescriptorSet(UniformBuffer const &, VkDevice const &, 
+        VkDescriptorSetLayout const &, VkImageView const &, VkSampler const &,
+        uint32_t const);
 
     std::shared_ptr<VkDescriptorPool> m_vulkan_descriptor_pool;
-    std::shared_ptr<VkDescriptorSet> m_vulkan_descriptor_set;
+    std::vector<std::shared_ptr<VkDescriptorSet>> m_vulkan_descriptor_sets;
 };
 
 #endif

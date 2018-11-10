@@ -20,32 +20,35 @@
 #include "descriptorsets.hpp"
 #include "descriptorsetlayout.hpp"
 #include "device.hpp"
+#include "swapchain.hpp"
 #include "textureresources.hpp"
 #include "texturesampler.hpp"
 #include "uniformbuffer.hpp"
 #include "uniformbufferobject.hpp"
 
 DescriptorSets::DescriptorSets(Device const &a_device, 
+    Swapchain const &a_swapchain,
     DescriptorSetLayout const &a_descriptor_set_layout,
     UniformBuffer const &a_uniform_buffer, 
     TextureResources const &a_texture_resources,
     TextureSampler const &a_texture_sampler): 
   m_vulkan_descriptor_pool(),
-  m_vulkan_descriptor_set()
+  m_vulkan_descriptor_sets()
 {
   auto vulkan_device = a_device.GetVulkanDevice();
   CreateVulkanDescriptorPool(*vulkan_device); 
 
   auto vulkan_descriptor_set_layout = 
     a_descriptor_set_layout.GetVulkanDescriptorSetLayout();
-  auto vulkan_uniform_buffer = a_uniform_buffer.GetVulkanUniformBuffer();
   auto vulkan_texture_image_view = 
     a_texture_resources.GetVulkanTextureImageView(); 
   auto vulkan_texture_sampler = a_texture_sampler.GetVulkanTextureSampler();
 
-  UpdateVulkanDescriptorSet(*vulkan_device, *vulkan_descriptor_set_layout,
-        *vulkan_uniform_buffer, *vulkan_texture_image_view, 
-        *vulkan_texture_sampler);
+  uint32_t const swapchain_image_count = a_swapchain.GetSwapchainImageCount();
+
+  UpdateVulkanDescriptorSet(a_uniform_buffer, *vulkan_device, 
+      *vulkan_descriptor_set_layout, *vulkan_texture_image_view,
+      *vulkan_texture_sampler, swapchain_image_count);
 }
 
 DescriptorSets::~DescriptorSets()
@@ -84,67 +87,78 @@ int8_t DescriptorSets::CreateVulkanDescriptorPool(
 }
     
 int8_t DescriptorSets::UpdateVulkanDescriptorSet(
+    UniformBuffer const &a_uniform_buffer,
     VkDevice const &a_vulkan_device,
     VkDescriptorSetLayout const &a_vulkan_descriptor_set_layout,
-    VkBuffer const &a_vulkan_uniform_buffer,
     VkImageView const &a_vulkan_texture_image_view,
-    VkSampler const &a_vulkan_texture_sampler)
+    VkSampler const &a_vulkan_texture_sampler,
+    uint32_t const a_swapchain_image_count)
 {
-  VkDescriptorSetLayout layouts[] = {a_vulkan_descriptor_set_layout};
+  std::vector<VkDescriptorSetLayout> layouts(a_swapchain_image_count,
+      a_vulkan_descriptor_set_layout);
 
   VkDescriptorSetAllocateInfo allocate_info = {};
   allocate_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
   allocate_info.descriptorPool = *m_vulkan_descriptor_pool;
-  allocate_info.descriptorSetCount = 1;
-  allocate_info.pSetLayouts = layouts;
+  allocate_info.descriptorSetCount = a_swapchain_image_count;
+  allocate_info.pSetLayouts = layouts.data();
 
-  // Does not need to be freed (due to optional flag).
-  m_vulkan_descriptor_set.reset(new VkDescriptorSet);
+  m_vulkan_descriptor_sets.resize(a_swapchain_image_count);
+  for (uint32_t i = 0; i < a_swapchain_image_count; i++) {
+    // Does not need to be freed (due to optional flag).
+    m_vulkan_descriptor_sets[i].reset(new VkDescriptorSet);
+  }
 
   uint32_t res = vkAllocateDescriptorSets(a_vulkan_device, &allocate_info, 
-      &(*m_vulkan_descriptor_set));
+      &(*m_vulkan_descriptor_sets[0]));
   if (res != VK_SUCCESS) {
     std::cerr << "Failed to create descriptor set." << std::endl;
     return -1;
   }
 
-  VkDescriptorBufferInfo buffer_info = {};
-  buffer_info.buffer = a_vulkan_uniform_buffer;
-  buffer_info.offset = 0;
-  buffer_info.range = sizeof(UniformBufferObject);
+  for (uint32_t i = 0; i < a_swapchain_image_count; i++) {
+  
+    auto vulkan_uniform_buffer = a_uniform_buffer.GetVulkanUniformBuffer(i);
 
-  VkDescriptorImageInfo image_info = {};
-  image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-  image_info.imageView = a_vulkan_texture_image_view;
-  image_info.sampler = a_vulkan_texture_sampler;
+    VkDescriptorBufferInfo buffer_info = {};
+    buffer_info.buffer = *vulkan_uniform_buffer;
+    buffer_info.offset = 0;
+    buffer_info.range = sizeof(UniformBufferObject);
 
-  std::array<VkWriteDescriptorSet, 2> descriptor_writes = {};
+    VkDescriptorImageInfo image_info = {};
+    image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    image_info.imageView = a_vulkan_texture_image_view;
+    image_info.sampler = a_vulkan_texture_sampler;
 
-  descriptor_writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-  descriptor_writes[0].dstSet = *m_vulkan_descriptor_set;
-  descriptor_writes[0].dstBinding = 0;
-  descriptor_writes[0].dstArrayElement = 0;
-  descriptor_writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-  descriptor_writes[0].descriptorCount = 1;
-  descriptor_writes[0].pBufferInfo = &buffer_info;
+    std::array<VkWriteDescriptorSet, 2> descriptor_writes = {};
 
-  descriptor_writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-  descriptor_writes[1].dstSet = *m_vulkan_descriptor_set;
-  descriptor_writes[1].dstBinding = 1;
-  descriptor_writes[1].dstArrayElement = 0;
-  descriptor_writes[1].descriptorType = 
-    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-  descriptor_writes[1].descriptorCount = 1;
-  descriptor_writes[1].pImageInfo = &image_info;
+    descriptor_writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptor_writes[0].dstSet = *m_vulkan_descriptor_sets[i];
+    descriptor_writes[0].dstBinding = 0;
+    descriptor_writes[0].dstArrayElement = 0;
+    descriptor_writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    descriptor_writes[0].descriptorCount = 1;
+    descriptor_writes[0].pBufferInfo = &buffer_info;
 
-  vkUpdateDescriptorSets(a_vulkan_device, 
-      static_cast<uint32_t>(descriptor_writes.size()), descriptor_writes.data(),
-      0, nullptr);
+    descriptor_writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptor_writes[1].dstSet = *m_vulkan_descriptor_sets[i];
+    descriptor_writes[1].dstBinding = 1;
+    descriptor_writes[1].dstArrayElement = 0;
+    descriptor_writes[1].descriptorType = 
+      VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    descriptor_writes[1].descriptorCount = 1;
+    descriptor_writes[1].pImageInfo = &image_info;
+
+    vkUpdateDescriptorSets(a_vulkan_device, 
+        static_cast<uint32_t>(descriptor_writes.size()), descriptor_writes.data(),
+        0, nullptr);
+  }
 
   return 0;
 }
 
-std::shared_ptr<VkDescriptorSet> DescriptorSets::GetVulkanDescriptorSet() const
+std::shared_ptr<VkDescriptorSet> DescriptorSets::GetVulkanDescriptorSet(
+    uint32_t a_index) const
 {
-  return m_vulkan_descriptor_set;
+  return m_vulkan_descriptor_sets[a_index];
 }

@@ -55,8 +55,7 @@ class Vulkan {
     Vulkan(Vulkan const &) = delete;
     Vulkan &operator=(Vulkan const &) = delete;
     virtual ~Vulkan();
-    void UpdateUniformBufferObject(double const);
-    int8_t DrawFrame(uint32_t const, uint32_t const);
+    int8_t DrawFrame(float const, uint32_t const, uint32_t const, bool const);
     void RecreateSwapchain(uint32_t const, uint32_t const);
 
   private:
@@ -80,6 +79,9 @@ class Vulkan {
     std::shared_ptr<CommandBuffers> m_command_buffers;
     std::shared_ptr<Semaphore> m_image_available_semaphore;
     std::shared_ptr<Semaphore> m_render_finished_semaphore;
+    std::vector<VkFence> m_in_flight_fences;
+
+    uint16_t m_current_frame = 0;
 };
 
 #endif

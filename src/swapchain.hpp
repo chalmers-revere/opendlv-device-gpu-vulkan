@@ -33,6 +33,7 @@ class Swapchain {
     Swapchain(Swapchain const &) = delete;
     Swapchain &operator=(Swapchain const &) = delete;
     virtual ~Swapchain();
+    uint32_t GetSwapchainImageCount() const;
     std::shared_ptr<VkSwapchainKHR> GetVulkanSwapchain() const;
     std::shared_ptr<std::vector<VkImage>> GetVulkanSwapchainImages() const;
     VkExtent2D GetVulkanSwapchainExtent() const;

@@ -26,6 +26,7 @@ Window::Window():
     m_title("OpenDLV Vulkan renderer"),
     m_height(600),
     m_width(800),
+    m_framebuffer_resized(false),
     m_initialized(false),
     m_running(false)
 {
@@ -44,10 +45,11 @@ Window::Window():
       });
 
   glfwSetWindowUserPointer(&(*m_window), this);
+  glfwSetFramebufferSizeCallback(&(*m_window), OnFramebufferResize);
+
   glfwSetKeyCallback(&(*m_window), OnKeyPress);
   glfwSetCursorPosCallback(&(*m_window), OnMouseCursorMove);
   glfwSetMouseButtonCallback(&(*m_window), OnMouseButtonPress);
-  glfwSetWindowSizeCallback(&(*m_window), OnWindowResize);
 
   m_vulkan.reset(new Vulkan(m_window, m_title, m_width, m_height, 
         true));
@@ -63,9 +65,10 @@ Window& Window::GetInstance()
   return instance;
 }
 
-std::shared_ptr<Vulkan> Window::GetVulkan() const
+void Window::OnFramebufferResize(GLFWwindow *a_window, int32_t, int32_t)
 {
-  return m_vulkan;
+  auto window = reinterpret_cast<Window *>(glfwGetWindowUserPointer(a_window));
+  window->SetFramebufferResized(true);
 }
 
 void Window::OnKeyPress(GLFWwindow *, int32_t a_key, int32_t, int32_t a_action, 
@@ -85,17 +88,6 @@ void Window::OnMouseCursorMove(GLFWwindow *, double a_x, double a_y)
   Window::GetInstance().ParseGlfwMouseCursorInput(a_x, a_y);
 }
 
-void Window::OnWindowResize(GLFWwindow *a_window, int32_t a_width, 
-    int32_t a_height)
-{
-  if (a_width <= 0 || a_height <= 0) {
-    return;
-  }
-
-  Window *app = reinterpret_cast<Window *>(glfwGetWindowUserPointer(a_window));
-  app->GetVulkan()->RecreateSwapchain(a_width, a_height);
-}
-
 void Window::ParseGlfwButtonInput(int32_t a_button, int32_t)
 {
   if (a_button == GLFW_KEY_ESCAPE) {
@@ -107,17 +99,22 @@ void Window::ParseGlfwMouseCursorInput(double, double)
 {
 }
 
+void Window::SetFramebufferResized(bool a_framebuffer_resized)
+{
+  m_framebuffer_resized = a_framebuffer_resized;
+}
+
 void Window::Start()
 {
   m_running = true;
 
   while (!glfwWindowShouldClose(&(*m_window)) && m_running) {
     auto current_time = std::chrono::high_resolution_clock::now();
-    double time = 
-      std::chrono::duration_cast<std::chrono::milliseconds>(
-          current_time - m_start_time).count() / 1000.0;
-    m_vulkan->UpdateUniformBufferObject(time);
-    m_vulkan->DrawFrame(m_width, m_height);
+    float time = 
+      std::chrono::duration<float, std::chrono::seconds::period>(
+          current_time - m_start_time).count();
+    m_vulkan->DrawFrame(time, m_width, m_height, m_framebuffer_resized);
+    m_framebuffer_resized = false;
 
     glfwPollEvents();
   }
