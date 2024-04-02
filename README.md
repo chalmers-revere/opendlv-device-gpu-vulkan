@@ -1,3 +1,5 @@
+Moved to https://git.opendlv.org.
+
 # opendlv-device-gpu-vulkan
 
 Compile with (replace 'intel' with 'nvidia' or 'amd' depending on your platform):
